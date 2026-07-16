@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# YOLO
+runs/
+*.cache
+
+# Modèles lourds
+*.pt
+
+# Calibration (optionnel)
+# *.npy
+
+# IDE
+.vscode/
+.idea/
+
+# Mac
+.DS_Store
