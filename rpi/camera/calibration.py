@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from pathlib import Path
 
 cap = cv2.VideoCapture(0)
 
@@ -67,10 +68,10 @@ while True:
 
                 # Coordonnées réelles du plateau (cm)
                 points_plateau = np.float32([
-                    [1.9, 1.9],
-                    [40.1, 1.9],
-                    [40.1, 27.6],
-                    [1.9, 27.6]
+                    [2.8, 2.8],    # haut gauche
+                    [39.2, 2.8],   # haut droit
+                    [39.2, 26.7],  # bas droit
+                    [2.8, 26.7]    # bas gauche
                 ])
 
 
@@ -87,12 +88,14 @@ while True:
 
 
                 # Sauvegarde
+                chemin_homographie = Path(__file__).with_name("homography.npy")
+
                 np.save(
-                    "homography.npy",
+                    chemin_homographie,
                     H
                 )
 
-                print("\nMatrice sauvegardée dans homography.npy")
+                print("\nMatrice sauvegardée dans {chemin_homographie}")
 
                 break
 

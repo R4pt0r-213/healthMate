@@ -12,8 +12,24 @@ MODEL_PATH = PROJECT_ROOT / "ia" / "model" / "best.pt"
 # Permet d'importer camera.plateau lors d'un lancement direct
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from camera.plateau import analyse_position
+from camera.plateau import (
+    DISTANCE_MAX_PRISE_CM,
+    DISTANCE_MIN_PRISE_CM,
+    analyse_position,
+    construire_dictionnaire_marqueurs,
+    obtenir_transformation_plateau,
+    repere_plateau_visible,
+)
+from ia.config import CONFIANCE_MIN_GOBELET
 
+dictionnaire = cv2.aruco.getPredefinedDictionary(
+    cv2.aruco.DICT_4X4_50
+)
+
+detecteur = cv2.aruco.ArucoDetector(
+    dictionnaire,
+    cv2.aruco.DetectorParameters(),
+)
 
 def main():
     # Chargement du modèle de détection
@@ -35,14 +51,42 @@ def main():
             print("Impossible de récupérer une image")
             break
 
+        coins, ids, _ = detecteur.detectMarkers(frame)
+        if ids is not None:
+            cv2.aruco.drawDetectedMarkers(
+                frame,
+                coins,
+                ids,
+            )
+
+        markers = construire_dictionnaire_marqueurs(coins, ids)
+        repere_visible = repere_plateau_visible(markers)
+
+        try:
+            obtenir_transformation_plateau(markers)
+            repere_disponible = True
+        except RuntimeError:
+            repere_disponible = False
+
         # Détection des gobelets
         resultats = model.predict(
             source=frame,
-            conf=0.5,
+            conf=CONFIANCE_MIN_GOBELET,
             verbose=False,
         )
 
         resultat = resultats[0]
+
+        if not repere_disponible:
+            cv2.putText(
+                frame,
+                "INITIALISATION : MONTRER 0, 1, 2, 3",
+                (15, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 255),
+                2,
+            )
 
         for box in resultat.boxes:
             # Coordonnées du rectangle de détection
@@ -53,12 +97,19 @@ def main():
             confiance = float(box.conf[0].item())
             etat = model.names[class_id]
 
-            # Centre du gobelet dans l'image
+            # Point de contact du gobelet avec le plateau
             centre_x = int((x1 + x2) / 2)
-            centre_y = int((y1 + y2) / 2)
+            centre_y = int(y2)
 
             try:
-                position = analyse_position(centre_x, centre_y)
+                if not repere_disponible:
+                    continue
+
+                position = analyse_position(
+                    centre_x,
+                    centre_y,
+                    markers,
+                )
 
                 x_cm = float(position["x_cm"])
                 y_cm = float(position["y_cm"])
@@ -67,29 +118,41 @@ def main():
                 dy = float(position["dy"])
                 distance = float(position["distance_robot"])
                 angle_plateau = float(position["angle_plateau"])
-                angle_servo = float(position["angle_servo"])
-
+                angle_cible = float(position["angle_cible_pince"])
+                angle_servo = position["angle_servo"]
                 zone = position["zone"]
                 medicament = position["medicament"]
 
                 texte = (
-                    f"{etat} | zone {zone} | type {medicament} "
-                    f"| {confiance:.0%}"
+                    f"{etat} | zone={zone} | medicament={medicament} | "
+                    f"confiance={confiance:.0%}"
                 )
 
-                coordonnees = (
-                    f"relatif: dx={dx:.1f}, dy={dy:.1f}, "
-                    f"d={distance:.1f} cm, servo={angle_servo:.1f} deg"
-                )
-
-                # Vert si le gobelet est sur le plateau
-                if (
-                    zone != "Hors plateau"
-                    and medicament != "Hors plateau"
-                ):
-                    couleur = (0, 255, 0)
-                else:
+                if distance < DISTANCE_MIN_PRISE_CM:
+                    coordonnees = (
+                        f"TROP PROCHE (< {DISTANCE_MIN_PRISE_CM:.0f} cm), "
+                        f"d={distance:.1f} cm"
+                    )
+                    couleur = (0, 0, 255)
+                elif distance > DISTANCE_MAX_PRISE_CM:
+                    coordonnees = (
+                        f"TROP LOIN (> {DISTANCE_MAX_PRISE_CM:.0f} cm), "
+                        f"d={distance:.1f} cm"
+                    )
+                    couleur = (0, 0, 255)
+                elif angle_servo is None:
+                    coordonnees = (
+                        f"pince={angle_plateau:.1f} deg, "
+                        f"servo=HORS PORTEE, d={distance:.1f} cm"
+                    )
                     couleur = (0, 165, 255)
+                else:
+                    coordonnees = (
+                        f"cible={angle_cible:.1f} deg, "
+                        f"servo={angle_servo:.1f} deg, "
+                        f"d={distance:.1f} cm"
+                    )
+                    couleur = (0, 255, 0)
 
             except Exception as erreur:
                 texte = f"{etat} | position inconnue"
@@ -105,13 +168,30 @@ def main():
                 2,
             )
 
-            # Point central utilisé pour calculer la position
+            # Cible utilisée pour calculer la position : milieu du bord bas.
             cv2.circle(
                 frame,
                 (centre_x, centre_y),
-                5,
+                7,
                 (255, 0, 255),
                 -1,
+            )
+            cv2.drawMarker(
+                frame,
+                (centre_x, centre_y),
+                (255, 255, 255),
+                cv2.MARKER_CROSS,
+                22,
+                2,
+            )
+            cv2.putText(
+                frame,
+                "POSITION",
+                (centre_x + 10, centre_y - 8),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (255, 0, 255),
+                2,
             )
 
             # Fond du texte
@@ -148,6 +228,17 @@ def main():
             )
 
         # Instructions
+        if repere_disponible and not repere_visible:
+            cv2.putText(
+                frame,
+                "REPERE MEMORISE - MARQUEUR MANQUANT",
+                (15, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                (0, 165, 255),
+                2,
+            )
+
         cv2.putText(
             frame,
             "Q ou Echap : quitter",

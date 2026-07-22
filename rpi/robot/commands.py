@@ -1,50 +1,27 @@
-"""
-Fonctions haut niveau du robot.
-"""
+from robot.communication import Robot
+
+def main():
+
+    robot = Robot()
+
+    try:
+
+        angle = 120
+        distance = 11
+
+        print("Envoi de la commande...")
+
+        robot.envoyer(angle, distance)
+
+        if robot.attendre_fin(timeout=60):
+            print("Cycle terminé")
+        else:
+            print("Cycle non confirmé par l'Arduino")
+
+    finally:
+
+        robot.fermer()
 
 
-from robot.communication import send_command
-
-
-
-def move_to(arduino,x,y):
-
-    """
-    Déplace le bras à une position.
-    """
-
-
-    send_command(
-        arduino,
-        f"MOVE {x} {y}"
-    )
-
-
-
-
-def grab(arduino):
-
-    """
-    Séquence de prise.
-    """
-
-
-    send_command(
-        arduino,
-        "GRAB"
-    )
-
-
-
-
-def release(arduino):
-
-    """
-    Séquence de dépose.
-    """
-
-
-    send_command(
-        arduino,
-        "RELEASE"
-    )
+if __name__ == "__main__":
+    main()
