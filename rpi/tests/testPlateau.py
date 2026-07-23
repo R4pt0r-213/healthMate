@@ -21,6 +21,7 @@ from camera.plateau import (
     repere_plateau_visible,
 )
 from ia.config import CONFIANCE_MIN_GOBELET
+from camera.visualisation import dessiner_portee_robot
 
 dictionnaire = cv2.aruco.getPredefinedDictionary(
     cv2.aruco.DICT_4X4_50
@@ -68,12 +69,18 @@ def main():
         except RuntimeError:
             repere_disponible = False
 
-        # Détection des gobelets
+        # Détection des gobelets sur l'image originale
         resultats = model.predict(
-            source=frame,
+            source=frame.copy(),
             conf=CONFIANCE_MIN_GOBELET,
             verbose=False,
         )
+
+        resultat = resultats[0]
+
+        # On dessine la portée seulement après la détection YOLO
+        if repere_disponible:
+            dessiner_portee_robot(frame, markers)
 
         resultat = resultats[0]
 

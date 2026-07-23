@@ -27,9 +27,10 @@ from camera.plateau import (
 )
 from robot.communication import Robot
 from ia.config import CONFIANCE_MIN_GOBELET
+from testPriseGobeletBoucleFermee import aligner_base
 
 
-def main():
+def main(boucle_fermee=False):
     model = YOLO(str(MODEL_PATH))
     dictionnaire = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
     detecteur = cv2.aruco.ArucoDetector(
@@ -97,6 +98,7 @@ def main():
             repere_visible = repere_plateau_visible(markers)
             repere_disponible = False
             angle_depot = None
+            angle_cible_depot = None
             distance_depot = None
 
             try:
@@ -114,6 +116,7 @@ def main():
                 )
                 if depot["angle_servo"] is not None:
                     angle_depot = float(depot["angle_servo"])
+                    angle_cible_depot = float(depot["angle_cible_pince"])
                     distance_depot = float(depot["distance_cm"])
             except (RuntimeError, ValueError):
                 pass
@@ -168,6 +171,7 @@ def main():
                 if candidat:
                     donnees = {
                         "angle": angle,
+                        "angle_cible": angle_cible,
                         "distance": distance,
                         "etat": etat,
                         "zone": zone,
@@ -330,14 +334,49 @@ def main():
                     f"vide -> D, puis plein -> ancienne place du vide"
                 )
 
+                angle_vide = vide["angle"]
+                angle_plein = plein["angle"]
+
+                if boucle_fermee:
+                    print("\n--- ALIGNEMENT VISUEL AVANT LE CYCLE ---")
+
+                    angle_vide, fermee_vide = aligner_base(
+                        robot,
+                        camera,
+                        detecteur,
+                        vide["angle_cible"],
+                        angle_vide,
+                    )
+                    angle_depot, fermee_depot = aligner_base(
+                        robot,
+                        camera,
+                        detecteur,
+                        angle_cible_depot,
+                        angle_depot,
+                    )
+                    angle_plein, fermee_plein = aligner_base(
+                        robot,
+                        camera,
+                        detecteur,
+                        plein["angle_cible"],
+                        angle_plein,
+                    )
+
+                    print(
+                        "Alignements terminés : "
+                        f"vide={'fermée' if fermee_vide else 'ouverte'}, "
+                        f"dépôt={'fermée' if fermee_depot else 'ouverte'}, "
+                        f"plein={'fermée' if fermee_plein else 'ouverte'}"
+                    )
+
                 robot.envoyer_remplacement(
-                    vide["angle"],
+                    angle_vide,
                     vide["distance"],
                     angle_depot,
                     distance_depot,
-                    plein["angle"],
+                    angle_plein,
                     plein["distance"],
-                    vide["angle"],
+                    angle_vide,
                     vide["distance"],
                 )
                 commande_en_cours = True

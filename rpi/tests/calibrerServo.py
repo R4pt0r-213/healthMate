@@ -9,12 +9,15 @@ import cv2
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from camera.plateau import pixel_to_cm
+from camera.plateau import (
+    DECALAGE_CALIBRATION_SERVO_DEG,
+    OFFSET_PINCE_MARQUEUR_DEG,
+    pixel_to_cm,
+)
 from robot.communication import Robot
 
 
 ARUCO_BRAS_ID = 4
-OFFSET_PINCE_DEG = 103.7
 ANGLES_TEST = [0, 30, 60, 90, 120, 150, 180]
 DISTANCE_TEST = 11
 
@@ -63,7 +66,11 @@ def mesurer_pince(camera, detecteur, nombre_mesures=30, timeout=8):
                 continue
 
             angle_marqueur = orientation_marqueur(marker_coins)
-            angle_pince = (angle_marqueur + OFFSET_PINCE_DEG) % 360
+            angle_pince = (
+                angle_marqueur
+                + OFFSET_PINCE_MARQUEUR_DEG
+                + DECALAGE_CALIBRATION_SERVO_DEG
+            ) % 360
             mesures.append(angle_pince)
             break
 
@@ -86,6 +93,15 @@ def commander_et_mesurer(robot, camera, detecteur, commande):
     angle_pince = mesurer_pince(camera, detecteur)
     print(f"Angle réel de la pince : {angle_pince:.2f}°")
     return angle_pince
+
+
+def derouler_angle(angle, reference):
+    """Évite le saut artificiel de 0° à 360° dans la table finale."""
+    while angle - reference > 180:
+        angle -= 360
+    while angle - reference < -180:
+        angle += 360
+    return angle
 
 
 def main():
@@ -118,6 +134,12 @@ def main():
                 detecteur,
                 commande,
             )
+
+            if mesures:
+                angle_pince = derouler_angle(
+                    angle_pince,
+                    mesures[-1][1],
+                )
             mesures.append((commande, angle_pince))
 
         print("\n--- RÉSULTAT À M'ENVOYER ---")

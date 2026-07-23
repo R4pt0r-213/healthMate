@@ -6,17 +6,20 @@
 enum ServoId { BASE = 0, EPAULE = 1, COUDE = 2, POIGNET = 3, PINCE = 4 };
 
 const byte NB_SERVOS = 5;
-const byte SERVO_PINS[NB_SERVOS] = {9, 6, 5, 3, 10};
-const int ANGLE_MIN[NB_SERVOS] = {0, 5, 20, 10, 20};
-const int ANGLE_MAX[NB_SERVOS] = {180, 175, 175, 170, 165};
-const int REPOS[NB_SERVOS] = {180, 63, 40, 50, 20};
+const byte SERVO_PINS[NB_SERVOS] = {9, 6, 5, 3, 11};
+const int ANGLE_MIN[NB_SERVOS] = {0, 5, 20, 10, 30};
+const int ANGLE_MAX[NB_SERVOS] = {180, 175, 175, 170, 180};
+const int REPOS[NB_SERVOS] = {180, 63, 40, 50, 160};
 
 const int PINCE_OUVERTE = 50;
+const int PINCE_DEPOT = 100;
 const int PINCE_FERMEE = 170;
+const int POIGNET_DEPOT_APPROCHE = 60;
+const int POIGNET_VERTICAL = 75;
 const int LIMITE_ZONE_PROCHE = 13;
 
 Servo servos[NB_SERVOS];
-int positions[NB_SERVOS] = {180, 63, 40, 50, 20};
+int positions[NB_SERVOS] = {180, 63, 40, 50, 160};
 
 // Les articulations qui portent le bras ou le gobelet doivent continuer à
 // fournir du couple après leur mouvement. La base et le poignet peuvent être
@@ -79,6 +82,12 @@ void fermerPince() {
   bougerServo(PINCE, PINCE_FERMEE, 16);
 }
 
+void ouvrirPinceTresDoucement(int angleFinal) {
+  Serial.println("ETAPE:OUVERTURE_PINCE_DOUCE");
+  bougerServo(PINCE, angleFinal, 35);
+  delay(300);
+}
+
 void remonterBras() {
   Serial.println("ETAPE:REMONTEE");
   // Le coude remonte avant l'épaule pour éloigner la pince du plateau.
@@ -126,18 +135,24 @@ void deposerObjet(int angleBase, int distanceDepot) {
     Serial.println("ETAPE:DEPOT_PROCHE");
     bougerServo(COUDE, 110, 18);
     bougerServo(EPAULE, 52, 18);
-    bougerServo(POIGNET, 75, 18);
+    bougerServo(POIGNET, POIGNET_DEPOT_APPROCHE, 18);
+    bougerServo(POIGNET, POIGNET_VERTICAL, 18);
   } else {
     Serial.println("ETAPE:DEPOT_ELOIGNE");
     bougerServo(COUDE, 90, 18);
     bougerServo(EPAULE, 38, 18);
+    bougerServo(POIGNET, POIGNET_DEPOT_APPROCHE, 18);
     bougerServo(COUDE, 110, 18);
-    bougerServo(POIGNET, 75, 18);
+    bougerServo(POIGNET, POIGNET_VERTICAL, 18);
   }
 
   delay(600);
   Serial.println("ETAPE:LACHER_GOBELET");
-  ouvrirPince();
+  ouvrirPinceTresDoucement(105);
+  delay(700);
+  ouvrirPinceTresDoucement(70);
+  delay(700);
+  ouvrirPinceTresDoucement(PINCE_OUVERTE);
   delay(700);
 
   // La pince ne porte plus rien : elle n'a plus besoin de fournir du couple.

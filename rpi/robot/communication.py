@@ -2,7 +2,7 @@ import serial
 import time
 
 
-PORT = "/dev/cu.usbserial-1130"
+PORT = "/dev/cu.usbserial-1120"
 BAUDRATE = 115200
 
 

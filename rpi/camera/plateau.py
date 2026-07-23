@@ -88,25 +88,33 @@ ZONES = {
 ROBOT_OFFSET_X = -15.0
 ROBOT_OFFSET_Y = 10.0
 
-DEPOT_X_CM = 21.0
-DEPOT_Y_CM = 24.25
+DEPOT_X_CM = 23.19
+DEPOT_Y_CM = 22.37
 
 PLATEAU_MARKER_IDS = (0, 1, 2, 3)
 ROBOT_MARKER_ID = 1
 
 
 CALIBRATION_SERVO = [
-    (0.0, 169.59),
-    (30.0, 145.34),
-    (60.0, 117.39),
-    (90.0, 89.92),
-    (120.0, 64.08),
-    (150.0, 36.40),
-    (180.0, 9.00),
+    (0.0, 153.26),
+    (30.0, 130.99),
+    (60.0, 100.93),
+    (90.0, 73.86),
+    (120.0, 48.45),
+    (150.0, 22.40),
+    (180.0, -6.37),
 ]
 
+# Décalage entre le bord supérieur du marqueur ArUco 4 et l'axe réel
+# des mors. Recalculé depuis une position où la pince était physiquement
+# alignée avec le gobelet : 103.7° + 143.2° = 246.9°.
+OFFSET_PINCE_MARQUEUR_DEG = 246.9
 
-CORRECTION_ANGLE_PRISE_DEG = 2.0
+# La direction utilisable par le servo correspond au demi-cercle opposé
+# à celui mesuré initialement par le bord du marqueur.
+DECALAGE_CALIBRATION_SERVO_DEG = -180.0
+
+CORRECTION_ANGLE_PRISE_DEG = -14.0
 
 # Un gobelet plus proche risquerait de se trouver sous le bras ou trop près
 # de l'axe de rotation pour être saisi correctement.
@@ -544,7 +552,22 @@ def angle_pince_to_servo(angle_pince):
     """
     Interpole la commande du servo depuis les mesures réelles.
     """
-    angle_pince %= 360
+    # La table peut traverser 0° et contenir des valeurs négatives. On choisit
+    # donc la représentation circulaire de la cible la plus proche du centre
+    # de la plage calibrée : angle, angle - 360 ou angle + 360.
+    angle_normalise = angle_pince % 360
+    centre_calibration = (
+        CALIBRATION_SERVO[0][1]
+        + CALIBRATION_SERVO[-1][1]
+    ) / 2
+    angle_pince = min(
+        (
+            angle_normalise - 360,
+            angle_normalise,
+            angle_normalise + 360,
+        ),
+        key=lambda candidat: abs(candidat - centre_calibration),
+    )
 
     for index in range(
         1,
@@ -566,6 +589,64 @@ def angle_pince_to_servo(angle_pince):
             )
 
     return None
+
+
+def construire_polygone_portee_robot(
+    robot_x,
+    robot_y,
+    nombre_points=100,
+):
+    """
+    Construit en coordonnées plateau le secteur réellement prenable.
+
+    Il combine la plage angulaire calibrée du servo et les distances
+    minimale/maximale autorisées pour une prise.
+    """
+    angles_pinces = [angle_pince for _, angle_pince in CALIBRATION_SERVO]
+    angle_min = min(angles_pinces) - CORRECTION_ANGLE_PRISE_DEG
+    angle_max = max(angles_pinces) - CORRECTION_ANGLE_PRISE_DEG
+
+    angles_exterieurs = np.linspace(
+        angle_min,
+        angle_max,
+        nombre_points,
+    )
+    angles_interieurs = angles_exterieurs[::-1]
+
+    def points_arc(distance, angles):
+        radians = np.radians(angles)
+        return np.column_stack(
+            (
+                robot_x + distance * np.cos(radians),
+                robot_y + distance * np.sin(radians),
+            )
+        )
+
+    arc_exterieur = points_arc(
+        DISTANCE_MAX_PRISE_CM,
+        angles_exterieurs,
+    )
+    arc_interieur = points_arc(
+        DISTANCE_MIN_PRISE_CM,
+        angles_interieurs,
+    )
+
+    return np.vstack((arc_exterieur, arc_interieur)).astype(np.float32)
+
+
+def points_plateau_to_pixels(points_plateau, transformation_plateau):
+    """Projette des points du repère plateau vers l'image caméra."""
+    transformation_pixel_vers_plateau = transformation_plateau @ H
+    transformation_plateau_vers_pixel = np.linalg.inv(
+        transformation_pixel_vers_plateau
+    )
+
+    points = np.array([points_plateau], dtype=np.float32)
+    pixels = cv2.perspectiveTransform(
+        points,
+        transformation_plateau_vers_pixel,
+    )
+    return pixels[0]
 
 
 # ============================================================

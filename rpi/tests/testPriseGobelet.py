@@ -19,6 +19,7 @@ from camera.plateau import (
 )
 from robot.communication import Robot
 from ia.config import CONFIANCE_MIN_GOBELET
+from camera.visualisation import dessiner_portee_robot
 
 
 MODEL_PATH = ROOT / "ia" / "model" / "best.pt"
@@ -86,6 +87,10 @@ def main():
                 conf=CONFIANCE_MIN_GOBELET,
                 verbose=False,
             )
+            
+            if repere_disponible:
+                dessiner_portee_robot(frame, markers)
+
 
             candidats = []
 

@@ -5,7 +5,7 @@ const byte PIN_SERVO_BASE = 9;
 const int DELAI_PAR_DEGRE_MS = 20;
 
 Servo servoBase;
-int positionBase = 90;
+int positionBase = 180;
 
 
 void deplacerBaseDoucement(int angleCible) {

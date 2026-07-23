@@ -7,7 +7,7 @@ const int ANGLE_MAX_BASE = 180;
 const int DELAI_PAR_DEGRE_MS = 20;
 
 Servo servoBase;
-int positionBase = 90;
+int positionBase = 180;
 
 
 void deplacerBaseDoucement(int angleCible) {

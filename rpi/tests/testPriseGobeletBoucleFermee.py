@@ -12,8 +12,10 @@ sys.path.insert(0, str(ROOT))
 
 from camera.plateau import (
     CALIBRATION_SERVO,
+    DECALAGE_CALIBRATION_SERVO_DEG,
     DISTANCE_MAX_PRISE_CM,
     DISTANCE_MIN_PRISE_CM,
+    OFFSET_PINCE_MARQUEUR_DEG,
     analyse_position,
     construire_dictionnaire_marqueurs,
     obtenir_transformation_plateau,
@@ -27,7 +29,6 @@ from ia.config import CONFIANCE_MIN_GOBELET
 MODEL_PATH = ROOT / "ia" / "model" / "best.pt"
 WINDOW_NAME = "Prise avec boucle fermee ArUco"
 ARUCO_BRAS_ID = 4
-OFFSET_PINCE_DEG = 103.7
 ERREUR_MAX_DEG = 2.0
 MAX_CORRECTIONS = 4
 CORRECTION_SERVO_MAX = 6.0
@@ -85,7 +86,9 @@ def afficher_alignement(camera, detecteur, message, duree, collecter=False):
             for marker_id, marker_coins in zip(ids.flatten(), coins):
                 if int(marker_id) == ARUCO_BRAS_ID:
                     angle = (
-                        orientation_marqueur(marker_coins) + OFFSET_PINCE_DEG
+                        orientation_marqueur(marker_coins)
+                        + OFFSET_PINCE_MARQUEUR_DEG
+                        + DECALAGE_CALIBRATION_SERVO_DEG
                     ) % 360
                     if collecter:
                         mesures.append(angle)

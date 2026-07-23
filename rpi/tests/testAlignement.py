@@ -10,13 +10,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = PROJECT_ROOT / "ia" / "model" / "best.pt"
 WINDOW_NAME = "Alignement bras et gobelet"
 ARUCO_BRAS_ID = 4
-# Décalage entre le bord supérieur du marqueur et l'axe réel des pinces.
-# Il sera calibré après une première mesure avec les pinces bien alignées.
-OFFSET_PINCE_DEG = 103.7
 
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from camera.plateau import pixel_to_cm
+from camera.plateau import OFFSET_PINCE_MARQUEUR_DEG, pixel_to_cm
 from ia.config import CONFIANCE_MIN_GOBELET
 
 
@@ -119,7 +116,7 @@ def main():
                         marker_coins
                     )
                     angle_pince = (
-                        angle_marqueur + OFFSET_PINCE_DEG
+                        angle_marqueur + OFFSET_PINCE_MARQUEUR_DEG
                     ) % 360
 
                     cv2.circle(
