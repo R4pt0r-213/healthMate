@@ -88,8 +88,11 @@ ZONES = {
 ROBOT_OFFSET_X = -15.0
 ROBOT_OFFSET_Y = 10.0
 
-DEPOT_X_CM = 23.19
-DEPOT_Y_CM = 22.37
+DEPOT_X_CM = 23.91
+DEPOT_Y_CM = 21.41
+# Commande imposée pour le dépôt. Elle évite que les petites variations
+# du centre du robot détecté changent l'orientation finale de la base.
+ANGLE_SERVO_DEPOT = 90.0
 
 PLATEAU_MARKER_IDS = (0, 1, 2, 3)
 ROBOT_MARKER_ID = 1
@@ -114,7 +117,7 @@ OFFSET_PINCE_MARQUEUR_DEG = 246.9
 # à celui mesuré initialement par le bord du marqueur.
 DECALAGE_CALIBRATION_SERVO_DEG = -180.0
 
-CORRECTION_ANGLE_PRISE_DEG = -14.0
+CORRECTION_ANGLE_PRISE_DEG = -10.0
 
 # Un gobelet plus proche risquerait de se trouver sous le bras ou trop près
 # de l'axe de rotation pour être saisi correctement.

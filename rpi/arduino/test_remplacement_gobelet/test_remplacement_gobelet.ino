@@ -23,12 +23,30 @@ const int ANGLE_MAX[NB_SERVOS] = {180, 175, 175, 170, 180};
 const int REPOS[NB_SERVOS] = {180, 63, 40, 50, 160};
 
 const int PINCE_OUVERTE = 50;
-const int PINCE_FERMEE = 170;
+const int PINCE_FERMEE = 175;
 
-const int POIGNET_DEPOT_APPROCHE = 60;
-const int POIGNET_VERTICAL = 75;
+const int POIGNET_VERTICAL = 50;
+const int POIGNET_DEPOT_INCLINE = 0;
 
 const int LIMITE_ZONE_PROCHE = 13;
+
+// Trajectoire mesurée manuellement pour un gobelet à environ 10 cm.
+// Seuls l'épaule (servo 1) et le coude (servo 2) proviennent de la
+// calibration. Le poignet n'est pas modifié pendant cette approche.
+const int PRISE_10CM_EPAULE_INTERMEDIAIRE = 111;
+const int PRISE_10CM_COUDE_INTERMEDIAIRE = 175;
+const int PRISE_10CM_EPAULE_FINALE = 55;
+const int PRISE_10CM_COUDE_FINAL = 148;
+
+// Trajectoire mesurée pour les gobelets situés à partir de 13 cm.
+const int PRISE_13CM_EPAULE_INTERMEDIAIRE = 61;
+const int PRISE_13CM_COUDE_INTERMEDIAIRE = 134;
+const int PRISE_13CM_EPAULE_FINALE = 22;
+const int PRISE_13CM_COUDE_FINAL = 105;
+
+// Position légèrement abaissée du servo d'index 2 afin que la caméra
+// voie mieux le marqueur ArUco 4 pendant l'alignement en boucle fermée.
+const int COUDE_VISIBILITE_ARUCO = 55;
 
 Servo servos[NB_SERVOS];
 
@@ -300,17 +318,17 @@ void prendreObjet(int angleBase, int distanceObjet) {
 
     deplacerRobotAuto(
       -1,
-      71,
-      125,
-      REPOS[POIGNET],
+      PRISE_10CM_EPAULE_INTERMEDIAIRE,
+      PRISE_10CM_COUDE_INTERMEDIAIRE,
+      -1,
       -1,
       18
     );
 
     deplacerRobotAuto(
       -1,
-      40,
-      130,
+      PRISE_10CM_EPAULE_FINALE,
+      PRISE_10CM_COUDE_FINAL,
       -1,
       -1,
       20
@@ -320,17 +338,17 @@ void prendreObjet(int angleBase, int distanceObjet) {
 
     deplacerRobotAuto(
       -1,
-      35,
-      75,
-      REPOS[POIGNET],
+      PRISE_13CM_EPAULE_INTERMEDIAIRE,
+      PRISE_13CM_COUDE_INTERMEDIAIRE,
+      -1,
       -1,
       15
     );
 
     deplacerRobotAuto(
       -1,
-      10,
-      90,
+      PRISE_13CM_EPAULE_FINALE,
+      PRISE_13CM_COUDE_FINAL,
       -1,
       -1,
       18
@@ -366,23 +384,34 @@ void deposerObjet(
     12
   );
 
+  // Mettre d'abord le poignet à la verticale. Les mouvements de descente
+  // suivants ne commandent plus ce servo : il reste vertical pendant
+  // l'approche, puis sera incliné juste avant le lâcher.
+  maintenirServo[POIGNET] = true;
+  deplacerRobotAuto(
+    -1, -1, -1,
+    POIGNET_VERTICAL,
+    -1,
+    12
+  );
+
   if (distanceDepot < LIMITE_ZONE_PROCHE) {
     Serial.println("ETAPE:DEPOT_PROCHE");
 
     deplacerRobotAuto(
       -1,
-      48,
+      47,
       110,
-      POIGNET_DEPOT_APPROCHE,
+      -1,
       -1,
       20
     );
 
     deplacerRobotAuto(
       -1,
-      48,
+      47,
       110,
-      POIGNET_VERTICAL,
+      -1,
       -1,
       24
     );
@@ -393,7 +422,7 @@ void deposerObjet(
       -1,
       38,
       90,
-      POIGNET_DEPOT_APPROCHE,
+      -1,
       -1,
       20
     );
@@ -402,32 +431,46 @@ void deposerObjet(
       -1,
       38,
       110,
-      POIGNET_VERTICAL,
+      -1,
       -1,
       24
     );
   }
 
+  // Le bras est maintenant en position de dépôt. Incliner le poignet
+  // progressivement jusqu'à 20° avant de lâcher le gobelet.
+  deplacerRobotAuto(
+    -1, -1, -1,
+    POIGNET_DEPOT_INCLINE,
+    -1,
+    18
+  );
+
   delay(600);
 
-  Serial.println("ETAPE:LACHER_GOBELET");
+  Serial.println("ETAPE:OUVERTURE_PARTIELLE");
 
+  // La pince s'ouvre seulement assez pour libérer le gobelet.
   ouvrirPinceTresDoucement(105);
-  delay(700);
+  delay(1000);
 
-  ouvrirPinceTresDoucement(70);
-  delay(700);
+  // Le poignet n'a plus besoin d'être maintenu pendant la remontée.
+  maintenirServo[POIGNET] = false;
 
-  ouvrirPinceTresDoucement(PINCE_OUVERTE);
-  delay(500);
+  Serial.println("ETAPE:REMONTEE_APRES_DEPOT");
 
-  // Après le dépôt en D, le bras remonte seulement en position de transport.
-  // Le retour complet au repos est interdit tant que S n'a pas été déplacé vers W.
+  // Le bras se lève alors que la pince reste partiellement ouverte.
   if (retourRepos) {
     positionRepos();
   } else {
     positionTransport();
   }
+
+  Serial.println("ETAPE:OUVERTURE_COMPLETE");
+
+  // Une fois le bras levé, la pince s'ouvre complètement.
+  ouvrirPinceTresDoucement(PINCE_OUVERTE);
+  delay(500);
 
   Serial.println("ETAPE:DEPOT_TERMINE");
 }
@@ -464,6 +507,21 @@ int lireCommande(int valeurs[8]) {
     return -2;
   }
 
+  int typeCommande = NOMBRE_PARAMETRES_CYCLE;
+  int nombreAttendu = NOMBRE_PARAMETRES_CYCLE;
+
+  // V : prendre le vide et le déposer dans D.
+  // P : prendre le plein et le déposer à la destination mémorisée.
+  if (ligne.startsWith("V;")) {
+    typeCommande = -3;
+    nombreAttendu = 4;
+    ligne = ligne.substring(2);
+  } else if (ligne.startsWith("P;")) {
+    typeCommande = -4;
+    nombreAttendu = 4;
+    ligne = ligne.substring(2);
+  }
+
   int debut = 0;
   int nombre = 0;
 
@@ -492,7 +550,7 @@ int lireCommande(int valeurs[8]) {
     return -1;
   }
 
-  if (nombre != NOMBRE_PARAMETRES_CYCLE) {
+  if (nombre != nombreAttendu) {
     return -1;
   }
 
@@ -505,7 +563,7 @@ int lireCommande(int valeurs[8]) {
     }
   }
 
-  return nombre;
+  return typeCommande;
 }
 
 void setup() {
@@ -533,13 +591,35 @@ void loop() {
   int nombre = lireCommande(valeurs);
 
   if (nombre == -2) {
-    Serial.println("ETAPE:ALIGNEMENT_BASE");
+    Serial.println("ETAPE:POSITION_VISIBILITE_ARUCO");
     deplacerRobotAuto(
       valeurs[0],
-      -1, -1, -1, -1,
+      -1,
+      COUDE_VISIBILITE_ARUCO,
+      -1,
+      -1,
       12
     );
     Serial.println("ALIGNE");
+  } else if (nombre == -3) {
+    Serial.println("CYCLE:VIDE_VERS_D");
+    prendreObjet(valeurs[0], valeurs[1]);
+    deposerObjet(
+      valeurs[2],
+      valeurs[3],
+      false
+    );
+    Serial.println("PHASE_VIDE_TERMINE");
+  } else if (nombre == -4) {
+    Serial.println("CYCLE:PLEIN_VERS_DESTINATION");
+    prendreObjet(valeurs[0], valeurs[1]);
+    deposerObjet(
+      valeurs[2],
+      valeurs[3],
+      false
+    );
+    positionRepos();
+    Serial.println("TERMINE");
   } else if (nombre == NOMBRE_PARAMETRES_CYCLE) {
     Serial.println("CYCLE:DEBUT_REMPLACEMENT");
 

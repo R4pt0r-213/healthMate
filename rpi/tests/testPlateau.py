@@ -104,9 +104,9 @@ def main():
             confiance = float(box.conf[0].item())
             etat = model.names[class_id]
 
-            # Point de contact du gobelet avec le plateau
+            # Centre de la boîte de détection du gobelet.
             centre_x = int((x1 + x2) / 2)
-            centre_y = int(y2)
+            centre_y = int((y1 + y2) / 2)
 
             try:
                 if not repere_disponible:

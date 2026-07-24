@@ -161,7 +161,7 @@ def main():
                 x1, y1, x2, y2 = meilleur_gobelet["rectangle"]
                 point_gobelet = (
                     int((x1 + x2) / 2),
-                    int(y2),
+                    int((y1 + y2) / 2),
                 )
 
                 cv2.rectangle(

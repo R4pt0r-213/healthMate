@@ -2,7 +2,7 @@ import serial
 import time
 
 
-PORT = "/dev/cu.usbserial-1120"
+PORT = "/dev/cu.usbserial-1130"
 BAUDRATE = 115200
 
 
@@ -123,6 +123,62 @@ class Robot:
         self._buffer_reception.clear()
         self.serial.write(message.encode("utf-8"))
         self.serial.flush()
+
+    def _envoyer_phase_remplacement(
+        self,
+        prefixe,
+        angle_prise,
+        distance_prise,
+        angle_depot,
+        distance_depot,
+    ):
+        """Envoie une moitié du remplacement au programme Arduino."""
+        angle_prise = max(0, min(180, int(round(angle_prise))))
+        distance_prise = max(0, int(round(distance_prise)))
+        angle_depot = max(0, min(180, int(round(angle_depot))))
+        distance_depot = max(0, int(round(distance_depot)))
+
+        message = (
+            f"{prefixe};{angle_prise};{distance_prise};"
+            f"{angle_depot};{distance_depot}\n"
+        )
+
+        print("Envoi phase remplacement >", repr(message))
+
+        self.serial.reset_input_buffer()
+        self._buffer_reception.clear()
+        self.serial.write(message.encode("utf-8"))
+        self.serial.flush()
+
+    def envoyer_vide_vers_depot(
+        self,
+        angle_vide,
+        distance_vide,
+        angle_depot,
+        distance_depot,
+    ):
+        self._envoyer_phase_remplacement(
+            "V",
+            angle_vide,
+            distance_vide,
+            angle_depot,
+            distance_depot,
+        )
+
+    def envoyer_plein_vers_destination(
+        self,
+        angle_plein,
+        distance_plein,
+        angle_destination,
+        distance_destination,
+    ):
+        self._envoyer_phase_remplacement(
+            "P",
+            angle_plein,
+            distance_plein,
+            angle_destination,
+            distance_destination,
+        )
 
     def lire(self):
         # Lecture strictement non bloquante : on récupère seulement les octets

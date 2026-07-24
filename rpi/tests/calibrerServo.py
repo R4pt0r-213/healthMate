@@ -12,7 +12,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from camera.plateau import (
     DECALAGE_CALIBRATION_SERVO_DEG,
     OFFSET_PINCE_MARQUEUR_DEG,
-    pixel_to_cm,
+    construire_dictionnaire_marqueurs,
+    obtenir_transformation_plateau,
+    pixel_to_plateau,
 )
 from robot.communication import Robot
 
@@ -22,12 +24,20 @@ ANGLES_TEST = [0, 30, 60, 90, 120, 150, 180]
 DISTANCE_TEST = 11
 
 
-def orientation_marqueur(marker_coins):
+def orientation_marqueur(marker_coins, transformation_plateau):
     coin_0 = marker_coins[0][0]
     coin_1 = marker_coins[0][1]
 
-    x_0, y_0 = pixel_to_cm(float(coin_0[0]), float(coin_0[1]))
-    x_1, y_1 = pixel_to_cm(float(coin_1[0]), float(coin_1[1]))
+    x_0, y_0 = pixel_to_plateau(
+        float(coin_0[0]),
+        float(coin_0[1]),
+        transformation_plateau,
+    )
+    x_1, y_1 = pixel_to_plateau(
+        float(coin_1[0]),
+        float(coin_1[1]),
+        transformation_plateau,
+    )
 
     angle = math.degrees(math.atan2(y_1 - y_0, x_1 - x_0))
     return angle % 360
@@ -58,6 +68,18 @@ def mesurer_pince(camera, detecteur, nombre_mesures=30, timeout=8):
         if identifiants is None:
             continue
 
+        markers = construire_dictionnaire_marqueurs(
+            coins,
+            identifiants,
+        )
+
+        try:
+            transformation_plateau = obtenir_transformation_plateau(
+                markers
+            )
+        except RuntimeError:
+            continue
+
         for marker_id, marker_coins in zip(
             identifiants.flatten(),
             coins,
@@ -65,7 +87,10 @@ def mesurer_pince(camera, detecteur, nombre_mesures=30, timeout=8):
             if int(marker_id) != ARUCO_BRAS_ID:
                 continue
 
-            angle_marqueur = orientation_marqueur(marker_coins)
+            angle_marqueur = orientation_marqueur(
+                marker_coins,
+                transformation_plateau,
+            )
             angle_pince = (
                 angle_marqueur
                 + OFFSET_PINCE_MARQUEUR_DEG

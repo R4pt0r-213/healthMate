@@ -19,7 +19,7 @@ from camera.plateau import (
     analyse_position,
     construire_dictionnaire_marqueurs,
     obtenir_transformation_plateau,
-    pixel_to_cm,
+    pixel_to_plateau,
     repere_plateau_visible,
 )
 from robot.communication import Robot
@@ -36,11 +36,20 @@ NB_MESURES_ARUCO = 15
 DELAI_MESURE_ARUCO = 2.0
 
 
-def orientation_marqueur(marker_coins):
+def orientation_marqueur(marker_coins, transformation_plateau):
+    """Mesure l'orientation dans le même repère que l'angle cible."""
     coin_0 = marker_coins[0][0]
     coin_1 = marker_coins[0][1]
-    x_0, y_0 = pixel_to_cm(float(coin_0[0]), float(coin_0[1]))
-    x_1, y_1 = pixel_to_cm(float(coin_1[0]), float(coin_1[1]))
+    x_0, y_0 = pixel_to_plateau(
+        float(coin_0[0]),
+        float(coin_0[1]),
+        transformation_plateau,
+    )
+    x_1, y_1 = pixel_to_plateau(
+        float(coin_1[0]),
+        float(coin_1[1]),
+        transformation_plateau,
+    )
     return math.degrees(math.atan2(y_1 - y_0, x_1 - x_0)) % 360
 
 
@@ -81,12 +90,29 @@ def afficher_alignement(camera, detecteur, message, duree, collecter=False):
             continue
 
         coins, ids, _ = detecteur.detectMarkers(frame)
+        transformation_plateau = None
+
         if ids is not None:
             cv2.aruco.drawDetectedMarkers(frame, coins, ids)
+
+            markers = construire_dictionnaire_marqueurs(coins, ids)
+            try:
+                transformation_plateau = obtenir_transformation_plateau(
+                    markers
+                )
+            except RuntimeError:
+                transformation_plateau = None
+
             for marker_id, marker_coins in zip(ids.flatten(), coins):
-                if int(marker_id) == ARUCO_BRAS_ID:
+                if (
+                    int(marker_id) == ARUCO_BRAS_ID
+                    and transformation_plateau is not None
+                ):
                     angle = (
-                        orientation_marqueur(marker_coins)
+                        orientation_marqueur(
+                            marker_coins,
+                            transformation_plateau,
+                        )
                         + OFFSET_PINCE_MARQUEUR_DEG
                         + DECALAGE_CALIBRATION_SERVO_DEG
                     ) % 360
@@ -236,7 +262,8 @@ def main():
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
                 etat = model.names[int(box.cls[0].item())]
                 confiance = float(box.conf[0].item())
-                px, py = int((x1 + x2) / 2), int(y2)
+                px = int((x1 + x2) / 2)
+                py = int((y1 + y2) / 2)
                 if not repere_disponible:
                     continue
 

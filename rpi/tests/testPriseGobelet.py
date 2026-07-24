@@ -101,7 +101,7 @@ def main():
                 etat = model.names[classe]
 
                 point_x = int((x1 + x2) / 2)
-                point_y = int(y2)
+                point_y = int((y1 + y2) / 2)
                 if not repere_disponible:
                     continue
 

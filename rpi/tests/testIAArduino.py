@@ -13,6 +13,7 @@ WINDOW_NAME = "Test IA + Arduino"
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from camera.plateau import (
+    ANGLE_SERVO_DEPOT,
     DEPOT_X_CM,
     DEPOT_Y_CM,
     DISTANCE_MAX_PRISE_CM,
@@ -63,6 +64,8 @@ def main(boucle_fermee=False):
     derniere_commande = 0
     commande_en_cours = False
     debut_commande = 0
+    etat_remplacement = "attente"
+    remplacement_memorise = None
 
     print("S : envoyer la position détectée à l'Arduino")
     print("Q ou Échap : quitter")
@@ -77,15 +80,31 @@ def main(boucle_fermee=False):
             if ligne_arduino != "":
                 print("Arduino >", ligne_arduino)
 
-                if ligne_arduino == "TERMINE":
+                if (
+                    boucle_fermee
+                    and ligne_arduino == "PHASE_VIDE_TERMINE"
+                ):
                     commande_en_cours = False
                     derniere_commande = time.time()
+                    etat_remplacement = "recherche_plein"
+                    print(
+                        "Gobelet vide déposé : nouvelle détection "
+                        "du stockage"
+                    )
+
+                elif ligne_arduino == "TERMINE":
+                    commande_en_cours = False
+                    derniere_commande = time.time()
+                    etat_remplacement = "attente"
+                    remplacement_memorise = None
                     print("Mouvement terminé")
 
             # Évite de rester bloqué si l'Arduino ne répond jamais TERMINE.
             if commande_en_cours and time.time() - debut_commande > 60:
                 commande_en_cours = False
                 derniere_commande = time.time()
+                etat_remplacement = "attente"
+                remplacement_memorise = None
                 print("L'Arduino n'a pas confirmé la fin du mouvement")
 
             success, frame = camera.read()
@@ -98,7 +117,6 @@ def main(boucle_fermee=False):
             repere_visible = repere_plateau_visible(markers)
             repere_disponible = False
             angle_depot = None
-            angle_cible_depot = None
             distance_depot = None
 
             try:
@@ -115,8 +133,7 @@ def main(boucle_fermee=False):
                     transformation,
                 )
                 if depot["angle_servo"] is not None:
-                    angle_depot = float(depot["angle_servo"])
-                    angle_cible_depot = float(depot["angle_cible_pince"])
+                    angle_depot = ANGLE_SERVO_DEPOT
                     distance_depot = float(depot["distance_cm"])
             except (RuntimeError, ValueError):
                 pass
@@ -129,6 +146,7 @@ def main(boucle_fermee=False):
 
             # On reconstruit les candidats à chaque image.
             position_selectionnee = None
+            plein_selectionne = None
             gobelets_vides = []
             gobelets_pleins = []
 
@@ -144,9 +162,9 @@ def main(boucle_fermee=False):
                 confiance = float(box.conf[0].item())
                 etat = model.names[class_id]
 
-                # Point de contact du gobelet avec le plateau
+                # Centre de la boîte de détection du gobelet.
                 point_x = int((x1 + x2) / 2)
-                point_y = int(y2)
+                point_y = int((y1 + y2) / 2)
 
                 if not repere_disponible or angle_depot is None:
                     continue
@@ -256,33 +274,72 @@ def main(boucle_fermee=False):
                     2,
                 )
 
-            # Choisit le vide le plus fiable qui possède un plein correspondant.
+            # En boucle fermée, on ne mesure d'abord que le gobelet vide.
+            # Le gobelet plein sera recherché après le dépôt du vide.
             gobelets_vides.sort(
                 key=lambda objet: objet["confiance"],
                 reverse=True,
             )
 
-            for vide in gobelets_vides:
-                correspondants = [
-                    plein
-                    for plein in gobelets_pleins
-                    if plein["medicament"] == vide["medicament"]
-                ]
+            if boucle_fermee:
+                if etat_remplacement == "attente" and gobelets_vides:
+                    position_selectionnee = {
+                        "vide": gobelets_vides[0],
+                    }
 
-                if correspondants:
-                    plein = max(
+                elif (
+                    etat_remplacement == "recherche_plein"
+                    and remplacement_memorise is not None
+                ):
+                    correspondants = [
+                        plein
+                        for plein in gobelets_pleins
+                        if (
+                            plein["medicament"]
+                            == remplacement_memorise["medicament"]
+                        )
+                    ]
+                    plein_selectionne = max(
                         correspondants,
                         key=lambda objet: objet["confiance"],
+                        default=None,
                     )
-                    position_selectionnee = {
-                        "vide": vide,
-                        "plein": plein,
-                    }
-                    break
+            else:
+                for vide in gobelets_vides:
+                    correspondants = [
+                        plein
+                        for plein in gobelets_pleins
+                        if plein["medicament"] == vide["medicament"]
+                    ]
+
+                    if correspondants:
+                        plein = max(
+                            correspondants,
+                            key=lambda objet: objet["confiance"],
+                        )
+                        position_selectionnee = {
+                            "vide": vide,
+                            "plein": plein,
+                        }
+                        break
 
             if commande_en_cours:
                 instruction = "ROBOT EN MOUVEMENT..."
                 couleur_instruction = (0, 165, 255)
+            elif (
+                boucle_fermee
+                and etat_remplacement == "recherche_plein"
+            ):
+                if plein_selectionne is None:
+                    instruction = (
+                        "RECHERCHE DU GOBELET PLEIN CORRESPONDANT DANS S"
+                    )
+                    couleur_instruction = (0, 165, 255)
+                else:
+                    instruction = (
+                        "GOBELET PLEIN TROUVE : ALIGNEMENT EN COURS"
+                    )
+                    couleur_instruction = (0, 255, 0)
             elif not repere_disponible:
                 instruction = "INITIALISATION : MONTRER 0, 1, 2, 3"
                 couleur_instruction = (0, 0, 255)
@@ -321,13 +378,42 @@ def main(boucle_fermee=False):
                 break
 
             if (
+                boucle_fermee
+                and etat_remplacement == "recherche_plein"
+                and plein_selectionne is not None
+                and not commande_en_cours
+                and time.time() - derniere_commande > 1
+            ):
+                print("\n--- ALIGNEMENT DU GOBELET PLEIN ---")
+                angle_plein, fermee_plein = aligner_base(
+                    robot,
+                    camera,
+                    detecteur,
+                    plein_selectionne["angle_cible"],
+                    plein_selectionne["angle"],
+                )
+                print(
+                    "Prise du plein en boucle "
+                    f"{'fermée' if fermee_plein else 'ouverte'}"
+                )
+                robot.envoyer_plein_vers_destination(
+                    angle_plein,
+                    plein_selectionne["distance"],
+                    remplacement_memorise["angle_destination"],
+                    remplacement_memorise["distance_destination"],
+                )
+                commande_en_cours = True
+                debut_commande = time.time()
+                etat_remplacement = "phase_plein"
+                continue
+
+            if (
                 touche == ord("s")
                 and position_selectionnee is not None
                 and not commande_en_cours
                 and time.time() - derniere_commande > 2
             ):
                 vide = position_selectionnee["vide"]
-                plein = position_selectionnee["plein"]
 
                 print(
                     f"Remplacement {vide['medicament']} : "
@@ -335,10 +421,9 @@ def main(boucle_fermee=False):
                 )
 
                 angle_vide = vide["angle"]
-                angle_plein = plein["angle"]
 
                 if boucle_fermee:
-                    print("\n--- ALIGNEMENT VISUEL AVANT LE CYCLE ---")
+                    print("\n--- ALIGNEMENT DU GOBELET VIDE ---")
 
                     angle_vide, fermee_vide = aligner_base(
                         robot,
@@ -347,38 +432,40 @@ def main(boucle_fermee=False):
                         vide["angle_cible"],
                         angle_vide,
                     )
-                    angle_depot, fermee_depot = aligner_base(
-                        robot,
-                        camera,
-                        detecteur,
-                        angle_cible_depot,
-                        angle_depot,
-                    )
-                    angle_plein, fermee_plein = aligner_base(
-                        robot,
-                        camera,
-                        detecteur,
-                        plein["angle_cible"],
-                        angle_plein,
-                    )
-
                     print(
-                        "Alignements terminés : "
-                        f"vide={'fermée' if fermee_vide else 'ouverte'}, "
-                        f"dépôt={'fermée' if fermee_depot else 'ouverte'}, "
-                        f"plein={'fermée' if fermee_plein else 'ouverte'}"
+                        "Prise du vide en boucle "
+                        f"{'fermée' if fermee_vide else 'ouverte'}"
                     )
 
-                robot.envoyer_remplacement(
-                    angle_vide,
-                    vide["distance"],
-                    angle_depot,
-                    distance_depot,
-                    angle_plein,
-                    plein["distance"],
-                    angle_vide,
-                    vide["distance"],
-                )
+                    remplacement_memorise = {
+                        "medicament": vide["medicament"],
+                        "angle_destination": angle_vide,
+                        "distance_destination": vide["distance"],
+                    }
+                    print(
+                        f"Dépôt imposé : servo={angle_depot:.1f}°, "
+                        f"distance={distance_depot:.1f} cm"
+                    )
+                    robot.envoyer_vide_vers_depot(
+                        angle_vide,
+                        vide["distance"],
+                        angle_depot,
+                        distance_depot,
+                    )
+                    etat_remplacement = "phase_vide"
+                else:
+                    plein = position_selectionnee["plein"]
+                    robot.envoyer_remplacement(
+                        angle_vide,
+                        vide["distance"],
+                        angle_depot,
+                        distance_depot,
+                        plein["angle"],
+                        plein["distance"],
+                        angle_vide,
+                        vide["distance"],
+                    )
+
                 commande_en_cours = True
                 debut_commande = time.time()
 

@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from camera.plateau import (
+    ANGLE_SERVO_DEPOT,
     DEPOT_X_CM,
     DEPOT_Y_CM,
     DISTANCE_MAX_PRISE_CM,
@@ -91,7 +92,7 @@ def main():
                     transformation,
                 )
                 if depot["angle_servo"] is not None:
-                    angle_depot = float(depot["angle_servo"])
+                    angle_depot = ANGLE_SERVO_DEPOT
                     distance_depot = float(depot["distance_cm"])
             except (RuntimeError, ValueError):
                 pass
@@ -107,7 +108,8 @@ def main():
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
                 etat = model.names[int(box.cls[0].item())]
                 confiance = float(box.conf[0].item())
-                point_x, point_y = int((x1 + x2) / 2), int(y2)
+                point_x = int((x1 + x2) / 2)
+                point_y = int((y1 + y2) / 2)
                 if not repere_disponible or angle_depot is None:
                     continue
 
